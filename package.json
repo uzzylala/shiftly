@@ -2,6 +2,7 @@
   "name": "shiftly",
   "private": true,
   "version": "0.1.0",
+  "description": "Role-based team scheduling platform with drag-and-drop shift planning, conflict detection, a shift-swap approval workflow, and real-time notifications.",
   "workspaces": [
     "shared",
     "backend",
