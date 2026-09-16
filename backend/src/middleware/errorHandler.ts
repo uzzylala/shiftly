@@ -1,10 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
-import type { ApiErrorBody } from "@shiftly/shared";
+import type { ApiErrorBody, ConflictReason } from "@shiftly/shared";
 
 export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    public conflicts?: ConflictReason[],
   ) {
     super(message);
   }
@@ -18,7 +19,10 @@ export function errorHandler(
   _next: NextFunction,
 ) {
   if (err instanceof HttpError) {
-    const body: ApiErrorBody = { message: err.message };
+    const body: ApiErrorBody = {
+      message: err.message,
+      ...(err.conflicts ? { conflicts: err.conflicts } : {}),
+    };
     res.status(err.status).json(body);
     return;
   }

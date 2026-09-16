@@ -4,10 +4,11 @@ import { apiFetch } from "../../lib/api-client";
 
 const EMPLOYEES_KEY = ["employees"] as const;
 
-export function useEmployees() {
+export function useEmployees(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: EMPLOYEES_KEY,
     queryFn: () => apiFetch<Employee[]>("/employees"),
+    enabled: options?.enabled ?? true,
   });
 }
 

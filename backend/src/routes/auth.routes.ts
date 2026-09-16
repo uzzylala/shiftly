@@ -18,6 +18,7 @@ function toAuthUser(user: {
   name: string;
   role: AuthUser["role"];
   organizationId: string;
+  employee: { id: string } | null;
 }): AuthUser {
   return {
     id: user.id,
@@ -25,6 +26,7 @@ function toAuthUser(user: {
     name: user.name,
     role: user.role,
     organizationId: user.organizationId,
+    employeeId: user.employee?.id ?? null,
   };
 }
 
@@ -32,7 +34,10 @@ authRouter.post("/login", validateBody(loginSchema), async (req, res, next) => {
   try {
     const { email, password } = req.body as { email: string; password: string };
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { employee: true },
+    });
     if (!user) {
       throw new HttpError(401, "Invalid email or password");
     }
@@ -62,7 +67,10 @@ authRouter.post("/refresh", async (req, res, next) => {
     }
 
     const payload = verifyRefreshToken(refreshToken);
-    const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { employee: true },
+    });
     if (!user) {
       throw new HttpError(401, "Invalid refresh token");
     }

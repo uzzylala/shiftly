@@ -29,7 +29,7 @@ export function LoginPage() {
             Sign in to Shiftly
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Manager access to build and edit the schedule.
+            Manager, HR, and employee access to the schedule.
           </p>
         </div>
 

@@ -1,0 +1,15 @@
+{
+  "buildCommand": "npm run build:shared && npm run prisma:generate -w backend && npm run build -w backend && npm run build -w frontend",
+  "installCommand": "npm install",
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/index.mjs": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api" },
+    { "source": "/health", "destination": "/api" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

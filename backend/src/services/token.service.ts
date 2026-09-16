@@ -8,6 +8,7 @@ export interface AccessTokenPayload {
   name: string;
   role: AuthUser["role"];
   organizationId: string;
+  employeeId: string | null;
 }
 
 export interface RefreshTokenPayload {
@@ -21,6 +22,7 @@ export function signAccessToken(user: AuthUser): string {
     name: user.name,
     role: user.role,
     organizationId: user.organizationId,
+    employeeId: user.employeeId,
   };
   return jwt.sign(payload, env.jwtAccessSecret, {
     expiresIn: env.accessTokenTtl,

@@ -1,63 +1,164 @@
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-// Only "manager" is created in the MVP phase. The other roles are modeled
-// now so the schema doesn't need a breaking migration once RBAC (phase 2)
-// introduces employee/HR logins.
 enum Role {
   manager
   employee
   hr
 }
 
+enum ShiftStatus {
+  scheduled
+  completed
+  cancelled
+}
+
+enum SwapStatus {
+  requested
+  accepted_by_coworker
+  declined_by_coworker
+  cancelled
+  rejected_by_manager
+  approved_by_manager
+  finalized
+  finalize_failed
+}
+
 model Organization {
-  id        String     @id @default(uuid())
-  name      String
-  createdAt DateTime   @default(now())
-  users     User[]
-  employees Employee[]
-  shifts    Shift[]
+  id           String        @id @default(uuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  users        User[]
+  employees    Employee[]
+  shifts       Shift[]
+  auditLogs    AuditLog[]
+  swapRequests SwapRequest[]
 }
 
 model User {
-  id             String       @id @default(uuid())
-  email          String       @unique
+  id             String         @id @default(uuid())
+  email          String         @unique
   passwordHash   String
   name           String
-  role           Role         @default(manager)
+  role           Role           @default(manager)
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  createdAt      DateTime     @default(now())
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime       @default(now())
+  employee       Employee?
+  notifications  Notification[]
 }
 
-// A roster entry a manager schedules shifts for. Not a login account yet —
-// phase 2 links an Employee to a User once employees can authenticate.
+// A roster entry a manager schedules shifts for. userId is set once a
+// manager grants that employee a login (see employees.routes.ts) — until
+// then the row is roster-only and can't authenticate.
 model Employee {
+  id                      String               @id @default(uuid())
+  organizationId          String
+  organization            Organization         @relation(fields: [organizationId], references: [id])
+  name                    String
+  userId                  String?              @unique
+  user                    User?                @relation(fields: [userId], references: [id])
+  createdAt               DateTime             @default(now())
+  shifts                  Shift[]
+  availabilityWindows     AvailabilityWindow[]
+  swapRequestsAsRequester SwapRequest[]        @relation("SwapRequester")
+  swapRequestsAsCoworker  SwapRequest[]        @relation("SwapCoworker")
+}
+
+model AvailabilityWindow {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  dayOfWeek  Int // Mon=0 .. Sun=6, matches the calendar's week start
+  startTime  String // "HH:mm"
+  endTime    String // "HH:mm"
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId, dayOfWeek])
+}
+
+// Immutable history of shift changes. shiftId is a plain field, not a
+// relation, so a row survives its shift being deleted — the point of an
+// audit log is to outlive the thing it describes.
+model AuditLog {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
-  name           String
+  shiftId        String
+  actorUserId    String
+  actorName      String
+  action         String // "created" | "updated" | "deleted"
+  before         Json?
+  after          Json?
   createdAt      DateTime     @default(now())
-  shifts         Shift[]
+
+  @@index([organizationId, shiftId])
+  @@index([organizationId, createdAt])
 }
 
 model Shift {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  employeeId     String
+  employee       Employee      @relation(fields: [employeeId], references: [id])
+  startTime      DateTime
+  endTime        DateTime
+  location       String
+  status         ShiftStatus   @default(scheduled)
+  note           String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  swapRequests   SwapRequest[]
+
+  @@index([organizationId, startTime])
+}
+
+// shiftId is nullable with onDelete: SetNull, not RESTRICT — deleting the
+// underlying shift must not be blocked by a pending swap referencing it,
+// and the request should survive the deletion (as a now-unactionable row)
+// rather than disappear, so its accept/approve guard has something concrete
+// to explain ("the shift this referenced no longer exists") instead of a
+// 404 that looks like a bug.
+model SwapRequest {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
-  employeeId     String
-  employee       Employee     @relation(fields: [employeeId], references: [id])
-  startTime      DateTime
-  endTime        DateTime
-  note           String?
+  shiftId        String?
+  shift          Shift?       @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  requesterId    String
+  requester      Employee     @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  coworkerId     String
+  coworker       Employee     @relation("SwapCoworker", fields: [coworkerId], references: [id], onDelete: Cascade)
+  status         SwapStatus   @default(requested)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  @@index([organizationId, startTime])
+  @@index([organizationId, status])
+  @@index([requesterId])
+  @@index([coworkerId])
+}
+
+// seq is the SSE replay cursor: strictly increasing, so "everything after
+// the client's Last-Event-ID" is a plain indexed range query, which a
+// createdAt timestamp can't guarantee under near-simultaneous writes.
+model Notification {
+  id            String    @id @default(uuid())
+  seq           Int       @unique @default(autoincrement())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  type          String
+  message       String
+  swapRequestId String?
+  shiftId       String?
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId, seq])
 }

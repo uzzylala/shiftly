@@ -1,13 +1,21 @@
-import type { ApiErrorBody, AuthTokens } from "@shiftly/shared";
+import type { ApiErrorBody, AuthTokens, ConflictReason } from "@shiftly/shared";
 import { useAuthStore } from "../store/auth-store";
 
 export class ApiError extends Error {
+  status: number;
+  details?: Record<string, string[]>;
+  conflicts?: ConflictReason[];
+
   constructor(
-    public status: number,
+    status: number,
     message: string,
-    public details?: Record<string, string[]>,
+    details?: Record<string, string[]>,
+    conflicts?: ConflictReason[],
   ) {
     super(message);
+    this.status = status;
+    this.details = details;
+    this.conflicts = conflicts;
   }
 }
 
@@ -62,6 +70,7 @@ export async function apiFetch<T>(
       res.status,
       body?.message ?? "Request failed",
       body?.details,
+      body?.conflicts,
     );
   }
 
